@@ -1,0 +1,235 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>智能问答</title>
+    <style>
+        body {
+            font-family: 'Arial', sans-serif;
+            background-color: #f0f4f8;
+            color: #333;
+            margin: 0;
+            padding: 0;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+        }
+
+        .container {
+            background-color: white;
+            padding: 30px;
+            border-radius: 15px;
+            box-shadow: 0 6px 20px rgba(0, 0, 0, 0.1);
+            max-width: 600px;
+            width: 100%;
+            overflow-y: auto;
+            height: 90vh;
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+
+        h1 {
+            color: #4a90e2;
+            font-size: 2em;
+            text-align: center;
+            margin-bottom: 20px;
+        }
+
+        .message {
+            display: flex;
+            align-items: flex-start;
+            margin-top: 15px;
+        }
+
+        .message.user {
+            flex-direction: row-reverse;
+        }
+
+        .message .text {
+            padding: 12px 18px;
+            background-color: #f1f1f1;
+            border-radius: 12px;
+            max-width: 75%;
+            word-wrap: break-word;
+            box-shadow: 0 2px 6px rgba(0, 0, 0, 0.1);
+        }
+
+        .message.assistant .text {
+            background-color: #e1f5fe;
+        }
+
+        .message.user .text {
+            background-color: #c8e6c9;
+        }
+
+        input[type="text"] {
+            width: 100%;
+            padding: 14px;
+            font-size: 16px;
+            border: 1px solid #ccc;
+            border-radius: 8px;
+            margin-top: 10px;
+            box-sizing: border-box;
+            background-color: #f9f9f9;
+            outline: none;
+            transition: border 0.3s ease;
+        }
+
+        input[type="text"]:focus {
+            border-color: #4a90e2;
+        }
+
+        button {
+            padding: 14px 22px;
+            font-size: 18px;
+            background-color: #4a90e2;
+            color: white;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: background-color 0.3s ease;
+        }
+
+        button:hover {
+            background-color: #357ABD;
+        }
+
+        .suggestions {
+            margin-top: 20px;
+            background-color: #fafafa;
+            padding: 15px;
+            border-radius: 10px;
+            box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+        }
+
+        .suggestions h3 {
+            color: #4a90e2;
+            font-size: 1.1em;
+        }
+
+        .suggestions ul {
+            list-style-type: none;
+            padding: 0;
+            margin: 0;
+        }
+
+        .suggestions ul li {
+            margin-bottom: 12px;
+            padding: 12px;
+            background-color: #e1f5fe;
+            border-radius: 6px;
+            transition: background-color 0.3s ease;
+            cursor: pointer;
+        }
+
+        .suggestions ul li:hover {
+            background-color: #b3e0f3;
+        }
+
+        .suggestions ul li.clicked {
+            background-color: #4a90e2;
+            color: white;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>智能问答</h1>
+        <div id="chat-box"></div>
+        <input type="text" id="question" placeholder="请输入问题">
+        <button onclick="askQuestion()">提交问题</button>
+
+        <!-- 提示问题 -->
+        <div class="suggestions" id="suggestions">
+            <h3>你可以尝试以下问题：</h3>
+            <ul id="suggestions-list"></ul>
+        </div>
+    </div>
+
+    <script>
+        async function getWelcomeMessage() {
+            const response = await fetch('/get_welcome');
+            const data = await response.json();
+            if (data.welcome) {
+                displayMessage("assistant", data.welcome);
+            }
+        }
+
+        async function askQuestion(question = null) {
+            const input = document.getElementById('question');
+            const questionText = question || input.value;
+            if (!questionText) return;
+
+            displayMessage("user", questionText);
+
+            const response = await fetch('/ask', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ question: questionText })
+            });
+
+            const data = await response.json();
+            displayMessage("assistant", data.answer || "无法获取回答");
+
+            // 清空输入框
+            if (!question) input.value = '';
+
+            // 助手回答后，生成相关问题
+            generateRelatedSuggestions(questionText);
+        }
+
+        function displayMessage(role, text) {
+            const chatBox = document.getElementById('chat-box');
+            const messageDiv = document.createElement('div');
+            messageDiv.className = 'message ' + role;
+            const textDiv = document.createElement('div');
+            textDiv.className = 'text';
+            textDiv.textContent = (role === 'user' ? '你: ' : '助手: ') + text;
+            messageDiv.appendChild(textDiv);
+            chatBox.appendChild(messageDiv);
+
+            // 滚动到最新消息
+            chatBox.scrollTop = chatBox.scrollHeight;
+        }
+
+        async function generateRelatedSuggestions(question) {
+            const response = await fetch('/generate_related_suggestions', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ question: question })
+            });
+
+            const data = await response.json();
+            const suggestionsList = document.getElementById('suggestions-list');
+            suggestionsList.innerHTML = ''; // 清空旧的建议列表
+            if (data.suggestions && data.suggestions.length > 0) {
+                data.suggestions.forEach(suggestion => {
+                    const li = document.createElement('li');
+                    li.textContent = suggestion;
+                    li.onclick = function() {
+                        li.classList.add('clicked');
+                        setTimeout(() => li.classList.remove('clicked'), 300);
+                        askQuestion(suggestion);
+                    };
+                    suggestionsList.appendChild(li);
+                });
+            } else {
+                const li = document.createElement('li');
+                li.textContent = "未能生成相关问题，请稍后再试。";
+                suggestionsList.appendChild(li);
+            }
+        }
+
+        window.onload = function() {
+            getWelcomeMessage();
+        };
+    </script>
+</body>
+</html>
